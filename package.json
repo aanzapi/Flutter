@@ -1,16 +1,23 @@
 {
-  "name": "flutter-apk-builder",
+  "name": "flutter-apk-builder-bot",
   "version": "1.0.0",
-  "description": "Simple Flutter APK Builder Website",
-  "main": "server.js",
-  "type": "commonjs",
+  "description": "Telegram bot untuk build APK Flutter dari file zip",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "multer": "^1.4.5-lts.1",
-    "unzipper": "^0.10.14",
-    "uuid": "^9.0.1"
+    "node-telegram-bot-api": "^0.61.0",
+    "adm-zip": "^0.5.10",
+    "fs-extra": "^11.1.1",
+    "archiver": "^5.3.1",
+    "socket.io": "^4.6.1",
+    "socket.io-client": "^4.6.1",
+    "child_process": "^1.0.2",
+    "path": "^0.12.7",
+    "rimraf": "^5.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }

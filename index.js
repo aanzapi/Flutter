@@ -2,7 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const fs = require('fs');
 const path = require('path');
 const unzipper = require('unzipper');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const settings = require('./settings');
 
 if (!fs.existsSync(settings.WORK_DIR)) {
@@ -10,6 +10,10 @@ if (!fs.existsSync(settings.WORK_DIR)) {
 }
 
 const bot = new TelegramBot(settings.BOT_TOKEN, { polling: true });
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, "🚀 Kirim file project Flutter (.zip) untuk build APK");
@@ -27,6 +31,8 @@ bot.on('document', async (msg) => {
     const projectPath = path.join(settings.WORK_DIR, projectName);
     const zipPath = path.join(settings.WORK_DIR, fileName);
 
+    const startTime = Date.now();
+
     await bot.sendMessage(chatId, "⬇️ Downloading project...");
 
     const file = await bot.getFile(msg.document.file_id);
@@ -36,23 +42,61 @@ bot.on('document', async (msg) => {
     const buffer = await response.arrayBuffer();
     fs.writeFileSync(zipPath, Buffer.from(buffer));
 
-    await bot.sendMessage(chatId, "📦 Extracting...");
-
+    await bot.sendMessage(chatId, "📦 Extracting project...");
     fs.mkdirSync(projectPath);
 
     fs.createReadStream(zipPath)
         .pipe(unzipper.Extract({ path: projectPath }))
         .on('close', async () => {
 
-            await bot.sendMessage(chatId, "🔨 Building APK...");
+            const statusMsg = await bot.sendMessage(chatId, "🔨 Starting build...\n\n```Initializing...```", {
+                parse_mode: "Markdown"
+            });
 
-            exec(`cd ${projectPath} && flutter pub get && flutter build apk --release`, 
-            { timeout: settings.BUILD_TIMEOUT }, 
-            async (error, stdout, stderr) => {
+            let buildLog = "";
+            let lastUpdate = Date.now();
 
-                if (error) {
-                    await bot.sendMessage(chatId, "❌ Build gagal!");
-                    console.log(stderr);
+            const buildProcess = spawn("bash", [
+                "-c",
+                `cd ${projectPath} && flutter pub get && flutter build apk --release`
+            ]);
+
+            buildProcess.stdout.on("data", async (data) => {
+                buildLog += data.toString();
+
+                if (Date.now() - lastUpdate > 2000) {
+                    lastUpdate = Date.now();
+
+                    let trimmed = buildLog.slice(-3500);
+
+                    try {
+                        await bot.editMessageText(
+                            "🔨 Building APK...\n\n```" + trimmed + "```",
+                            {
+                                chat_id: chatId,
+                                message_id: statusMsg.message_id,
+                                parse_mode: "Markdown"
+                            }
+                        );
+                    } catch (e) {}
+                }
+            });
+
+            buildProcess.stderr.on("data", async (data) => {
+                buildLog += data.toString();
+            });
+
+            buildProcess.on("close", async (code) => {
+
+                if (code !== 0) {
+                    await bot.editMessageText(
+                        "❌ Build gagal!\n\n```" + buildLog.slice(-3500) + "```",
+                        {
+                            chat_id: chatId,
+                            message_id: statusMsg.message_id,
+                            parse_mode: "Markdown"
+                        }
+                    );
                     return;
                 }
 
@@ -62,8 +106,23 @@ bot.on('document', async (msg) => {
                 );
 
                 if (fs.existsSync(apkPath)) {
+
+                    await bot.editMessageText(
+                        "📤 Uploading APK...",
+                        {
+                            chat_id: chatId,
+                            message_id: statusMsg.message_id
+                        }
+                    );
+
                     await bot.sendDocument(chatId, apkPath);
-                    await bot.sendMessage(chatId, "✅ Build selesai!");
+
+                    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+
+                    await bot.sendMessage(chatId,
+                        `✅ Build selesai!\n⏱ Waktu: ${duration} detik`
+                    );
+
                 } else {
                     await bot.sendMessage(chatId, "❌ APK tidak ditemukan.");
                 }
@@ -75,4 +134,4 @@ bot.on('document', async (msg) => {
         });
 });
 
-console.log("🤖 Bot running...");
+console.log("🚀 Flutter Build Bot REALTIME running...");
